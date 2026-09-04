@@ -31,6 +31,24 @@ class TestLibrary(unittest.TestCase):
         # без sounddevice просто возвращает список (обычно пустой в CI)
         self.assertIsInstance(find_stereo_mix(), list)
 
+    def test_theme_registry(self):
+        from openpad import theme as t
+        self.assertIn("light", t.THEMES)
+        self.assertIn("dark", t.THEMES)
+
+        class FakeApp:
+            def __init__(self):
+                self.qss = None
+            def setStyle(self, _s):
+                pass
+            def setStyleSheet(self, s):
+                self.qss = s
+
+        app = FakeApp()
+        self.assertEqual(t.apply_theme(app, "dark"), "dark")
+        self.assertIn("background", app.qss)
+        self.assertEqual(t.apply_theme(app, "nope"), "light")
+
 
 if __name__ == "__main__":
     unittest.main()

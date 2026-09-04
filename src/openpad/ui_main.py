@@ -7,12 +7,12 @@ import os
 from pathlib import Path
 
 from PyQt6.QtCore import Qt, QTimer
-from PyQt6.QtGui import QAction, QColor, QKeySequence
+from PyQt6.QtGui import QAction, QActionGroup, QColor, QKeySequence
 from PyQt6.QtWidgets import (
     QApplication, QCheckBox, QComboBox, QDialog, QDialogButtonBox,
     QFileDialog, QHBoxLayout, QInputDialog, QLabel, QLineEdit, QListWidget,
-    QMainWindow, QMessageBox, QPushButton, QSlider, QSplitter, QStatusBar,
-    QTableWidget, QTableWidgetItem, QToolBar, QVBoxLayout, QWidget,
+    QMainWindow, QMessageBox, QPushButton, QSizePolicy, QSlider, QSplitter,
+    QStatusBar, QTableWidget, QTableWidgetItem, QToolBar, QVBoxLayout, QWidget,
     QKeySequenceEdit,
 )
 
@@ -21,6 +21,19 @@ from .audio_engine import DualOutputEngine, MicPassthrough
 from .audio_loader import SUPPORTED_EXTS, load_audio
 from .hotkeys import GlobalHotkeyManager
 from .library import Library, default_data_path
+from .theme import apply_theme
+
+
+def plural_sounds(n: int) -> str:
+    n = abs(int(n)) % 100
+    d = n % 10
+    if 11 <= n <= 14:
+        return "звуков"
+    if d == 1:
+        return "звук"
+    if 2 <= d <= 4:
+        return "звука"
+    return "звуков"
 
 
 def config_path() -> Path:
@@ -123,8 +136,10 @@ class MainWindow(QMainWindow):
         self._cache: dict[str, tuple] = {}
         self._current_cat = "Все"
         self._query = ""
+        self._theme = self.cfg.get("theme", "light")
 
         self._build_ui()
+        apply_theme(QApplication.instance(), self._theme)
         self._refresh_devices(initial=True)
         self._refresh_categories()
         self._refresh_table()
@@ -161,6 +176,7 @@ class MainWindow(QMainWindow):
                 "allow_overlap": self.chk_overlap.isChecked(),
                 "stop_on_repress": self.chk_toggle.isChecked(),
                 "passthrough": self.chk_pass.isChecked(),
+                "theme": getattr(self, "_theme", "light"),
             }
             p.write_text(json.dumps(data, ensure_ascii=False, indent=2),
                          encoding="utf-8")
@@ -191,6 +207,22 @@ class MainWindow(QMainWindow):
         self._menu_action(m_play, "Стоп всё", self.stop_all, "Escape")
         self._menu_action(m_play, "Следующий", self.play_next, "Ctrl+Right")
         self._menu_action(m_play, "Предыдущий", self.play_prev, "Ctrl+Left")
+
+        m_view = mb.addMenu("Вид")
+        theme_group = QActionGroup(self)
+        theme_group.setExclusive(True)
+        self.act_theme_light = QAction("Светлая тема", self, checkable=True)
+        self.act_theme_dark = QAction("Тёмная тема", self, checkable=True)
+        theme_group.addAction(self.act_theme_light)
+        theme_group.addAction(self.act_theme_dark)
+        m_view.addAction(self.act_theme_light)
+        m_view.addAction(self.act_theme_dark)
+        if self._theme == "dark":
+            self.act_theme_dark.setChecked(True)
+        else:
+            self.act_theme_light.setChecked(True)
+        self.act_theme_light.triggered.connect(lambda: self.set_theme("light"))
+        self.act_theme_dark.triggered.connect(lambda: self.set_theme("dark"))
 
         m_help = mb.addMenu("Помощь")
         self._menu_action(m_help, "Как вывести в микрофон…",
@@ -227,7 +259,7 @@ class MainWindow(QMainWindow):
         self.search = QLineEdit()
         self.search.setPlaceholderText("🔍 Поиск…")
         self.search.setClearButtonEnabled(True)
-        self.search.setMaximumWidth(220)
+        self.search.setMaximumWidth(170)
         self.search.textChanged.connect(self._on_search)
         tb.addWidget(self.search)
 
@@ -237,26 +269,30 @@ class MainWindow(QMainWindow):
         self.addToolBar(dev)
         dev.addWidget(QLabel("Динамики:"))
         self.cmb_spk = QComboBox()
-        self.cmb_spk.setMinimumWidth(150)
+        self.cmb_spk.setMinimumWidth(110)
+        self.cmb_spk.setSizePolicy(QSizePolicy.Policy.MinimumExpanding,
+                                   QSizePolicy.Policy.Fixed)
         self.cmb_spk.currentIndexChanged.connect(self._on_device_changed)
         dev.addWidget(self.cmb_spk)
         self.sld_spk = QSlider(Qt.Orientation.Horizontal)
         self.sld_spk.setRange(0, 100)
         self.sld_spk.setValue(int(self.engine.speaker_gain * 100))
-        self.sld_spk.setFixedWidth(80)
+        self.sld_spk.setFixedWidth(60)
         self.sld_spk.setToolTip("Громкость в наушники")
         self.sld_spk.valueChanged.connect(self._on_gain_changed)
         dev.addWidget(self.sld_spk)
         dev.addSeparator()
         dev.addWidget(QLabel("Вирт. микрофон:"))
         self.cmb_mic = QComboBox()
-        self.cmb_mic.setMinimumWidth(150)
+        self.cmb_mic.setMinimumWidth(110)
+        self.cmb_mic.setSizePolicy(QSizePolicy.Policy.MinimumExpanding,
+                                   QSizePolicy.Policy.Fixed)
         self.cmb_mic.currentIndexChanged.connect(self._on_device_changed)
         dev.addWidget(self.cmb_mic)
         self.sld_mic = QSlider(Qt.Orientation.Horizontal)
         self.sld_mic.setRange(0, 100)
         self.sld_mic.setValue(int(self.engine.mic_gain * 100))
-        self.sld_mic.setFixedWidth(80)
+        self.sld_mic.setFixedWidth(60)
         self.sld_mic.setToolTip("Громкость в Discord/игру")
         self.sld_mic.valueChanged.connect(self._on_gain_changed)
         dev.addWidget(self.sld_mic)
@@ -331,6 +367,17 @@ class MainWindow(QMainWindow):
             act.setShortcut(QKeySequence(shortcut))
         menu.addAction(act)
         return act
+
+    def set_theme(self, name: str):
+        self._theme = apply_theme(QApplication.instance(), name)
+        self.act_theme_light.setChecked(self._theme == "light")
+        self.act_theme_dark.setChecked(self._theme == "dark")
+        self._highlight_refresh()
+        self._save_cfg()
+
+    def _highlight_refresh(self):
+        # перерисовать подсветку играющей строки под новую тему
+        self._poll()
 
     # -- устройства -------------------------------------------------------
     def _refresh_devices(self, initial: bool = False):
@@ -462,7 +509,9 @@ class MainWindow(QMainWindow):
                 if c in (1, 2, 3):
                     item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
                 self.table.setItem(r, c, item)
-        self.setWindowTitle(f"OpenPad ({len(self.lib.tracks)} звуков)")
+        n = len(self.lib.tracks)
+        self.setWindowTitle(
+            "OpenPad" if n == 0 else f"OpenPad ({n} {plural_sounds(n)})")
 
     def _on_search(self, text: str):
         self._query = text
