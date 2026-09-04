@@ -172,31 +172,34 @@ class MainWindow(QMainWindow):
         # меню
         mb = self.menuBar()
         m_file = mb.addMenu("Файл")
-        m_file.addAction("Добавить файлы…", self.add_files, "Ctrl+O")
-        m_file.addAction("Добавить папку…", self.add_folder)
+        self._menu_action(m_file, "Добавить файлы…", self.add_files, "Ctrl+O")
+        self._menu_action(m_file, "Добавить папку…", self.add_folder)
         m_file.addSeparator()
-        m_file.addAction("Выход", self.close, "Ctrl+Q")
+        self._menu_action(m_file, "Выход", self.close, "Ctrl+Q")
 
         m_edit = mb.addMenu("Правка")
-        m_edit.addAction("Переименовать", self.rename_selected, "F2")
-        m_edit.addAction("Горячая клавиша…", self.assign_hotkey_selected)
-        m_edit.addAction("Категория…", self.change_category_selected)
+        self._menu_action(m_edit, "Переименовать", self.rename_selected, "F2")
+        self._menu_action(m_edit, "Горячая клавиша…",
+                           self.assign_hotkey_selected)
+        self._menu_action(m_edit, "Категория…", self.change_category_selected)
         m_edit.addSeparator()
-        m_edit.addAction("Удалить", self.delete_selected, "Delete")
+        self._menu_action(m_edit, "Удалить", self.delete_selected, "Delete")
 
         m_play = mb.addMenu("Воспроизведение")
-        m_play.addAction("Играть / Стоп", self.toggle_selected, "Space")
-        m_play.addAction("Стоп всё", self.stop_all, "Escape")
-        m_play.addAction("Следующий", self.play_next, "Ctrl+Right")
-        m_play.addAction("Предыдущий", self.play_prev, "Ctrl+Left")
+        self._menu_action(m_play, "Играть / Стоп", self.toggle_selected,
+                           "Space")
+        self._menu_action(m_play, "Стоп всё", self.stop_all, "Escape")
+        self._menu_action(m_play, "Следующий", self.play_next, "Ctrl+Right")
+        self._menu_action(m_play, "Предыдущий", self.play_prev, "Ctrl+Left")
 
         m_help = mb.addMenu("Помощь")
-        m_help.addAction("Как вывести в микрофон…", self.show_mic_help)
-        m_help.addAction("Режим без драйвера (Stereo Mix)…",
-                         self.show_stereo_help)
-        m_help.addAction("Открыть настройки звука Windows",
-                         self.open_sound_settings)
-        m_help.addAction("О проекте", self.show_about)
+        self._menu_action(m_help, "Как вывести в микрофон…",
+                           self.show_mic_help)
+        self._menu_action(m_help, "Режим без драйвера (Stereo Mix)…",
+                           self.show_stereo_help)
+        self._menu_action(m_help, "Открыть настройки звука Windows",
+                           self.open_sound_settings)
+        self._menu_action(m_help, "О проекте", self.show_about)
 
         # верхний тулбар
         tb = QToolBar("main", self)
@@ -318,6 +321,16 @@ class MainWindow(QMainWindow):
         self.status = QStatusBar()
         self.setStatusBar(self.status)
         self._update_status("Готово. Перетащите аудиофайлы в окно.")
+
+    def _menu_action(self, menu, text, slot=None, shortcut=None):
+        """PyQt6-совместимый addAction: текст + слот + шорткат."""
+        act = QAction(text, self)
+        if slot is not None:
+            act.triggered.connect(slot)
+        if shortcut:
+            act.setShortcut(QKeySequence(shortcut))
+        menu.addAction(act)
+        return act
 
     # -- устройства -------------------------------------------------------
     def _refresh_devices(self, initial: bool = False):
@@ -644,18 +657,22 @@ class MainWindow(QMainWindow):
         menu = QMenu(self)
         rows = sorted({self.table.row(i) for i in self.table.selectedItems()})
         if rows:
-            menu.addAction("▶ Играть", lambda: self._play_row(rows[0]))
+            self._menu_action(menu, "▶ Играть",
+                               lambda: self._play_row(rows[0]))
             menu.addSeparator()
-            menu.addAction("Переименовать", self.rename_selected)
-            menu.addAction("Горячая клавиша…", self.assign_hotkey_selected)
-            menu.addAction("Категория…", self.change_category_selected)
+            self._menu_action(menu, "Переименовать", self.rename_selected)
+            self._menu_action(menu, "Горячая клавиша…",
+                               self.assign_hotkey_selected)
+            self._menu_action(menu, "Категория…",
+                               self.change_category_selected)
             vol = menu.addMenu("Громкость")
             for v in (25, 50, 75, 100):
-                vol.addAction(f"{v}%", lambda vv=v: self._set_vol_selected(vv))
+                self._menu_action(vol, f"{v}%",
+                                   lambda _c=False, vv=v: self._set_vol_selected(vv))
             menu.addSeparator()
-            menu.addAction("Удалить", self.delete_selected)
+            self._menu_action(menu, "Удалить", self.delete_selected)
         else:
-            menu.addAction("Добавить файлы…", self.add_files)
+            self._menu_action(menu, "Добавить файлы…", self.add_files)
         menu.exec(self.table.viewport().mapToGlobal(pos))
 
     def _set_vol_selected(self, v: int):
