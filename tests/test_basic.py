@@ -5,7 +5,8 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 
-from openpad.devices import find_stereo_mix, is_stereo_mix_name
+from openpad.devices import (find_stereo_mix, find_virtual_cables,
+                           is_stereo_mix_name, is_virtual_cable_name)
 from openpad.hotkeys import normalize_qt_hotkey
 from openpad.library import Library
 
@@ -30,6 +31,13 @@ class TestLibrary(unittest.TestCase):
         self.assertFalse(is_stereo_mix_name("Microphone"))
         # без sounddevice просто возвращает список (обычно пустой в CI)
         self.assertIsInstance(find_stereo_mix(), list)
+        self.assertIsInstance(find_virtual_cables(), list)
+
+    def test_virtual_cable_hints(self):
+        self.assertTrue(is_virtual_cable_name("CABLE Input (VB-Audio)"))
+        self.assertTrue(is_virtual_cable_name("OpenPad Virtual Mic"))
+        self.assertFalse(is_virtual_cable_name("Microphone (Realtek)"))
+        self.assertFalse(is_virtual_cable_name("Stereo Mix"))
 
     def test_theme_registry(self):
         from openpad import theme as t

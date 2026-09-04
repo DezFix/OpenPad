@@ -60,16 +60,16 @@ def list_inputs() -> list[DeviceInfo]:
     return [d for d in list_all() if d.is_input]
 
 
-_VIRTUAL_HINTS = ("cable", "vb-audio", "voicemeeter", "virtual", "banana", "potato")
+_VIRTUAL_HINTS = ("cable", "vb-audio", "voicemeeter", "virtual", "banana",
+                  "potato", "openpad")
+
+
+def is_virtual_cable_name(name: str) -> bool:
+    return any(h in (name or "").lower() for h in _VIRTUAL_HINTS)
 
 
 def find_virtual_cables() -> list[DeviceInfo]:
-    found = []
-    for d in list_outputs():
-        low = d.name.lower()
-        if any(h in low for h in _VIRTUAL_HINTS):
-            found.append(d)
-    return found
+    return [d for d in list_outputs() if is_virtual_cable_name(d.name)]
 
 
 _STEREO_HINTS = (

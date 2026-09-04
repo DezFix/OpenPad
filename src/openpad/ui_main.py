@@ -7,7 +7,7 @@ import os
 from pathlib import Path
 
 from PyQt6.QtCore import Qt, QTimer
-from PyQt6.QtGui import QAction, QActionGroup, QColor, QKeySequence
+from PyQt6.QtGui import QAction, QColor, QKeySequence
 from PyQt6.QtWidgets import (
     QApplication, QCheckBox, QComboBox, QDialog, QDialogButtonBox,
     QFileDialog, QHBoxLayout, QInputDialog, QLabel, QLineEdit, QListWidget,
@@ -136,10 +136,9 @@ class MainWindow(QMainWindow):
         self._cache: dict[str, tuple] = {}
         self._current_cat = "Все"
         self._query = ""
-        self._theme = self.cfg.get("theme", "system")
 
         self._build_ui()
-        apply_theme(QApplication.instance(), self._theme)
+        apply_theme(QApplication.instance(), "dark")
         self._refresh_devices(initial=True)
         self._refresh_categories()
         self._refresh_table()
@@ -176,7 +175,6 @@ class MainWindow(QMainWindow):
                 "allow_overlap": self.chk_overlap.isChecked(),
                 "stop_on_repress": self.chk_toggle.isChecked(),
                 "passthrough": self.chk_pass.isChecked(),
-                "theme": getattr(self, "_theme", "system"),
             }
             p.write_text(json.dumps(data, ensure_ascii=False, indent=2),
                          encoding="utf-8")
@@ -207,25 +205,6 @@ class MainWindow(QMainWindow):
         self._menu_action(m_play, "Стоп всё", self.stop_all, "Escape")
         self._menu_action(m_play, "Следующий", self.play_next, "Ctrl+Right")
         self._menu_action(m_play, "Предыдущий", self.play_prev, "Ctrl+Left")
-
-        m_view = mb.addMenu("Вид")
-        theme_group = QActionGroup(self)
-        theme_group.setExclusive(True)
-        self.act_theme_system = QAction("Системная тема", self, checkable=True)
-        self.act_theme_light = QAction("Светлая тема", self, checkable=True)
-        self.act_theme_dark = QAction("Тёмная тема", self, checkable=True)
-        for act in (self.act_theme_system, self.act_theme_light,
-                    self.act_theme_dark):
-            theme_group.addAction(act)
-            m_view.addAction(act)
-        {"system": self.act_theme_system,
-         "light": self.act_theme_light,
-         "dark": self.act_theme_dark}.get(
-            self._theme, self.act_theme_system).setChecked(True)
-        self.act_theme_system.triggered.connect(
-            lambda: self.set_theme("system"))
-        self.act_theme_light.triggered.connect(lambda: self.set_theme("light"))
-        self.act_theme_dark.triggered.connect(lambda: self.set_theme("dark"))
 
         m_help = mb.addMenu("Помощь")
         self._menu_action(m_help, "Как вывести в микрофон…",
@@ -314,6 +293,7 @@ class MainWindow(QMainWindow):
         self.setCentralWidget(splitter)
 
         left = QWidget()
+        left.setMinimumWidth(180)
         lv = QVBoxLayout(left)
         lv.setContentsMargins(6, 6, 6, 6)
         lv.addWidget(QLabel("Категории:"))
@@ -329,11 +309,6 @@ class MainWindow(QMainWindow):
         self.chk_toggle.setChecked(self.engine.stop_on_repress)
         self.chk_toggle.toggled.connect(self._on_mode_changed)
         lv.addWidget(self.chk_toggle)
-        lv.addWidget(QLabel("Вывод:"))
-        self.lbl_mode = QLabel("…")
-        self.lbl_mode.setWordWrap(True)
-        self.lbl_mode.setStyleSheet("color: #555; font-size: 11px;")
-        lv.addWidget(self.lbl_mode)
         splitter.addWidget(left)
 
         self.table = QTableWidget(0, 4)
@@ -371,18 +346,6 @@ class MainWindow(QMainWindow):
         menu.addAction(act)
         return act
 
-    def set_theme(self, name: str):
-        self._theme = apply_theme(QApplication.instance(), name)
-        self.act_theme_system.setChecked(self._theme == "system")
-        self.act_theme_light.setChecked(self._theme == "light")
-        self.act_theme_dark.setChecked(self._theme == "dark")
-        self._highlight_refresh()
-        self._save_cfg()
-
-    def _highlight_refresh(self):
-        # перерисовать подсветку играющей строки под новую тему
-        self._poll()
-
     # -- устройства -------------------------------------------------------
     def _refresh_devices(self, initial: bool = False):
         outs = devmod.list_outputs()
@@ -412,7 +375,6 @@ class MainWindow(QMainWindow):
         self.cmb_spk.blockSignals(False)
         self.cmb_mic.blockSignals(False)
         self._on_device_changed()
-        self._update_mode_label()
         if self._cable_hint:
             cables_txt = f"Найден кабель: {self._cable_hint}"
         elif self._stereo_hint:
@@ -427,26 +389,9 @@ class MainWindow(QMainWindow):
                 f"Подсказка: выберите Вирт. микрофон = {self._cable_hint} "
                 f"(см. Помощь → Как вывести в микрофон)")
 
-    def _update_mode_label(self):
-        if not hasattr(self, "lbl_mode"):
-            return
-        if self.cmb_mic.currentData():
-            self.lbl_mode.setText(
-                f"🎤 Кабель: {self.cmb_mic.currentData()}")
-        elif getattr(self, "_cable_hint", None):
-            self.lbl_mode.setText(
-                f"💡 Есть кабель: {self._cable_hint} — выбери его сверху")
-        elif getattr(self, "_stereo_hint", None):
-            self.lbl_mode.setText(
-                f"🔊 Stereo Mix: {self._stereo_hint} — режим без драйвера")
-        else:
-            self.lbl_mode.setText(
-                "🔈 Только динамики. Для чата нужен кабель или Stereo Mix")
-
     def _on_device_changed(self):
         self.engine.speaker_device = self.cmb_spk.currentData()
         self.engine.mic_device = self.cmb_mic.currentData()
-        self._update_mode_label()
         self._save_cfg()
 
     def _on_gain_changed(self):
