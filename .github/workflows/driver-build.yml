@@ -40,8 +40,10 @@ jobs:
           } else { Write-Host 'NO_WINDOWS_KITS_LIB' }
 
       - name: Build SysVAD solution (x64 Release)
+        # RunInfVerif=false: на runner'е нет x86\InfVerif.dll (известная
+        # дыра образа), сам .sys и подпись это не затрагивает.
         shell: pwsh
-        run: msbuild wds\audio\sysvad\sysvad.sln -p:Configuration=Release -p:Platform=x64 -m -v:m
+        run: msbuild wds\audio\sysvad\sysvad.sln -p:Configuration=Release -p:Platform=x64 -p:RunInfVerif=false -m -v:m
 
       - name: Upload built driver package
         if: success()
