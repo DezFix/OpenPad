@@ -47,7 +47,6 @@ class TestLibrary(unittest.TestCase):
         eng.stop_all()  # не падает на пустом
 
     def test_engine_voice_finishes(self):
-        # регрессия: раньше голос оставался "играющим" навсегда
         import time
         import numpy as np
         from openpad.audio_engine import DualOutputEngine
@@ -59,6 +58,24 @@ class TestLibrary(unittest.TestCase):
         time.sleep(0.4)
         self.assertFalse(eng.is_playing("t1"))
         self.assertFalse(eng.any_playing())
+
+    def test_cable_setup_helpers(self):
+        import tempfile
+        from pathlib import Path
+        from openpad import cable_setup as cs
+        self.assertTrue(cs.CABLE_URL.startswith("https://"))
+        self.assertTrue(cs.installer_candidates())
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            (root / "nested").mkdir()
+            exe_name = cs.installer_candidates()[0]
+            (root / "nested" / exe_name).write_bytes(b"fake")
+            found = cs.find_installer(root)
+            self.assertIsNotNone(found)
+            self.assertTrue(str(found).endswith(exe_name))
+        with tempfile.TemporaryDirectory() as td:
+            self.assertIsNone(cs.find_installer(Path(td)))
+        self.assertIsInstance(cs.is_admin(), bool)
 
     def test_theme_registry(self):
         from openpad import theme as t

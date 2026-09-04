@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import tempfile
 from pathlib import Path
 
 from PyQt6.QtCore import Qt, QTimer
@@ -11,11 +12,12 @@ from PyQt6.QtGui import QAction, QColor, QKeySequence
 from PyQt6.QtWidgets import (
     QApplication, QCheckBox, QComboBox, QDialog, QDialogButtonBox,
     QFileDialog, QHBoxLayout, QInputDialog, QLabel, QLineEdit, QListWidget,
-    QMainWindow, QMessageBox, QProgressBar, QPushButton, QSizePolicy, QSlider,
-    QSplitter, QStatusBar, QTableWidget, QTableWidgetItem, QToolBar,
-    QVBoxLayout, QWidget, QKeySequenceEdit,
+    QMainWindow, QMessageBox, QProgressDialog, QProgressBar, QPushButton,
+    QSizePolicy, QSlider, QSplitter, QStatusBar, QTableWidget,
+    QTableWidgetItem, QToolBar, QVBoxLayout, QWidget, QKeySequenceEdit,
 )
 
+from . import cable_setup as cablesetup
 from . import devices as devmod
 from .audio_engine import DualOutputEngine, MicPassthrough
 from .audio_loader import SUPPORTED_EXTS, load_audio
@@ -61,6 +63,7 @@ MIC_HELP = (
     "4. Включите <b>«Сквозной микрофон»</b>, чтобы друзья слышали и вас, "
     "и мемы (вход = ваш реальный микрофон).<br><br>"
     "Без кабеля всё работает из коробки — но только в ваши наушники.<br>"
+    "Быстрый путь: <b>Помощь → Установить VB-Cable в 1 клик…</b><br>"
     "Альтернатива без установки драйвера: <b>режим Stereo Mix</b> — "
     "см. Помощь → Режим без драйвера (Stereo Mix)."
 )
@@ -216,6 +219,8 @@ class MainWindow(QMainWindow):
         m_help = mb.addMenu("Помощь")
         self._menu_action(m_help, "Как вывести в микрофон…",
                            self.show_mic_help)
+        self._menu_action(m_help, "Установить VB-Cable в 1 клик…",
+                           self.install_cable)
         self._menu_action(m_help, "Режим без драйвера (Stereo Mix)…",
                            self.show_stereo_help)
         self._menu_action(m_help, "Открыть настройки звука Windows",
@@ -390,6 +395,13 @@ class MainWindow(QMainWindow):
         self._cable_hint = cables[0].name if cables else None
         stereo = devmod.find_stereo_mix()
         self._stereo_hint = stereo[0].name if stereo else None
+        # если кабель есть, а микрофон не выбран — выбрать самому
+        # (только при старте, чтобы не перебивать ручное "Выкл")
+        if initial and self.cmb_mic.currentData() is None and self._cable_hint:
+            for i in range(self.cmb_mic.count()):
+                if self.cmb_mic.itemData(i) == self._cable_hint:
+                    self.cmb_mic.setCurrentIndex(i)
+                    break
         self.cmb_spk.blockSignals(False)
         self.cmb_mic.blockSignals(False)
         self._on_device_changed()
@@ -791,6 +803,69 @@ class MainWindow(QMainWindow):
     def open_sound_settings(self):
         if not devmod.open_sound_control_panel("recording"):
             self._update_status("Не смог открыть mmsys.cpl")
+
+    def install_cable(self):
+        if devmod.find_virtual_cables():
+            QMessageBox.information(
+                self, "VB-Cable", "Кабель уже найден — ставить ничего не надо.")
+            return
+        ask = QMessageBox.question(
+            self, "Установить VB-Cable?",
+            "Скачаем официальный VB-Cable с vb-audio.com\n"
+            "(VB-Audio, donationware — если зайдёт, поддержи автора,\n"
+            "~1.3 МБ) и запустим тихую установку.\n\n"
+            "Понадобятся: подтверждение администратора и перезагрузка ПК.\n\n"
+            "Продолжить?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
+        if ask != QMessageBox.StandardButton.Yes:
+            return
+
+        prog = QProgressDialog("Скачивание VB-Cable…", "Отмена", 0, 100, self)
+        prog.setWindowModality(Qt.WindowModality.WindowModal)
+        prog.setAutoClose(True)
+        prog.show()
+
+        def on_progress(done: int, total: int):
+            if prog.wasCanceled():
+                raise RuntimeError("отменено пользователем")
+            if total and total > 0:
+                prog.setValue(min(100, int(done * 100 / total)))
+                QApplication.processEvents()
+
+        try:
+            tmp = Path(tempfile.mkdtemp(prefix="openpad_cable_"))
+            zp = cablesetup.download_pack(tmp / "vbcable.zip", on_progress)
+            prog.setValue(100)
+            prog.close()
+        except Exception as e:
+            prog.close()
+            QMessageBox.warning(
+                self, "VB-Cable",
+                f"Не скачалось: {e}\nПоставь вручную: {cablesetup.CABLE_HOMEPAGE}")
+            return
+
+        try:
+            root = cablesetup.extract_pack(zp, tmp / "pack")
+        except Exception as e:
+            QMessageBox.warning(self, "VB-Cable", f"Не распаковалось: {e}")
+            return
+        exe = cablesetup.find_installer(root)
+        if exe is None:
+            QMessageBox.warning(
+                self, "VB-Cable",
+                "В паке нет установщика под твою архитектуру.\n"
+                f"Поставь вручную: {cablesetup.CABLE_HOMEPAGE}")
+            return
+        if not cablesetup.run_installer_elevated(exe):
+            QMessageBox.information(
+                self, "VB-Cable",
+                "Установка не запустилась (нужны права администратора).")
+            return
+        QMessageBox.information(
+            self, "VB-Cable",
+            "Установщик запущен. Дождись конца установки\n"
+            "и ПЕРЕЗАГРУЗИ компьютер.\n\n"
+            "После перезагрузки OpenPad сам выберет CABLE Input.")
 
     def show_about(self):
         QMessageBox.about(
