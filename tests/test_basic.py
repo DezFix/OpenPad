@@ -39,6 +39,27 @@ class TestLibrary(unittest.TestCase):
         self.assertFalse(is_virtual_cable_name("Microphone (Realtek)"))
         self.assertFalse(is_virtual_cable_name("Stereo Mix"))
 
+    def test_engine_position_unknown(self):
+        from openpad.audio_engine import DualOutputEngine
+        eng = DualOutputEngine()
+        self.assertFalse(eng.is_playing("x"))
+        self.assertEqual(eng.get_position("x"), (0, 0, 44100))
+        eng.stop_all()  # не падает на пустом
+
+    def test_engine_voice_finishes(self):
+        # регрессия: раньше голос оставался "играющим" навсегда
+        import time
+        import numpy as np
+        from openpad.audio_engine import DualOutputEngine
+        eng = DualOutputEngine()
+        eng._dummy = True  # без железа: таймер вместо стрима
+        samples = np.zeros((4410, 2), dtype=np.float32)  # 0.1 c
+        self.assertEqual(eng.play("t1", samples, 44100), "started")
+        self.assertTrue(eng.is_playing("t1"))
+        time.sleep(0.4)
+        self.assertFalse(eng.is_playing("t1"))
+        self.assertFalse(eng.any_playing())
+
     def test_theme_registry(self):
         from openpad import theme as t
         self.assertIn("light", t.THEMES)

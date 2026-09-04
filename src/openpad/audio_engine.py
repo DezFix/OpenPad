@@ -30,6 +30,10 @@ class Voice:
     stop_event: threading.Event = field(default_factory=threading.Event)
     threads: list = field(default_factory=list)
     timer: object = None  # для dummy-режима без sounddevice
+    total_frames: int = 0
+    sr: int = 44100
+    pos_frames: int = 0  # только для индикации прогресса
+    remaining: int = 0  # сколько потоков вывода ещё не завершились
 
 
 class DualOutputEngine:
@@ -48,6 +52,7 @@ class DualOutputEngine:
         self.stop_on_repress = stop_on_repress
         self._lock = threading.Lock()
         self._voices: dict[str, list[Voice]] = {}
+        self.last_error: str | None = None
         try:
             import sounddevice  # noqa: F401
             self._dummy = False
@@ -92,7 +97,9 @@ class DualOutputEngine:
                     v.stop_event.set()
                 self._voices[track_id] = []
 
-            voice = Voice(track_id=track_id)
+            voice = Voice(track_id=track_id,
+                            total_frames=len(samples),
+                            sr=int(sr or 44100))
             self._voices.setdefault(track_id, []).append(voice)
 
         jobs = []
@@ -103,6 +110,7 @@ class DualOutputEngine:
             jobs.append((self.mic_device, self.mic_gain * gain_vol))
         if not jobs:  # всё замьючено — всё равно считаем что "сыграло"
             jobs.append((self.speaker_device, gain_vol))
+        voice.remaining = len(jobs)
 
         if self._dummy:
             dur = len(samples) / float(sr or 44100)
@@ -115,42 +123,59 @@ class DualOutputEngine:
         for device, gain in jobs:
             th = threading.Thread(
                 target=self._play_on_device,
-                args=(samples, sr, device, gain, voice.stop_event),
+                args=(samples, sr, device, gain, voice),
                 daemon=True,
             )
             voice.threads.append(th)
             th.start()
         return "started"
 
+    def get_position(self, track_id: str) -> tuple[int, int, int]:
+        """(проиграно фреймов, всего фреймов, sr) для индикации."""
+        with self._lock:
+            for v in self._voices.get(track_id, []):
+                if not v.stop_event.is_set():
+                    return v.pos_frames, v.total_frames, v.sr
+        return 0, 0, 44100
+
     def _play_on_device(self, samples: np.ndarray, sr: int,
-                        device, gain: float,
-                        stop_event: threading.Event) -> None:
+                        device, gain: float, voice: Voice) -> None:
+        stop_event = voice.stop_event
         try:
-            import sounddevice as sd
-        except Exception:
-            stop_event.wait(0.1)
-            return
-        data = (samples * gain).astype(np.float32, copy=False)
-        block = 2048
-        try:
-            dev_arg = self._resolve_device(device)
-            with sd.OutputStream(samplerate=sr,
-                                 channels=data.shape[1],
-                                 device=dev_arg,
-                                 dtype="float32",
-                                 blocksize=block) as stream:
-                pos = 0
-                n = len(data)
-                while pos < n and not stop_event.is_set():
-                    chunk = data[pos:pos + block]
-                    try:
-                        stream.write(chunk)
-                    except Exception:
-                        break
-                    pos += len(chunk)
-        except Exception:
-            # устройство занято/отключено — тихо выходим
-            pass
+            try:
+                import sounddevice as sd
+            except Exception as e:
+                self.last_error = f"sounddevice: {e}"
+                stop_event.wait(0.5)
+                return
+            data = (samples * gain).astype(np.float32, copy=False)
+            block = 2048
+            try:
+                dev_arg = self._resolve_device(device)
+                with sd.OutputStream(samplerate=sr,
+                                     channels=data.shape[1],
+                                     device=dev_arg,
+                                     dtype="float32",
+                                     blocksize=block) as stream:
+                    pos = 0
+                    n = len(data)
+                    while pos < n and not stop_event.is_set():
+                        chunk = data[pos:pos + block]
+                        try:
+                            stream.write(chunk)
+                        except Exception as e:
+                            self.last_error = f"write: {e}"
+                            break
+                        pos += len(chunk)
+                        voice.pos_frames = pos
+            except Exception as e:
+                self.last_error = f"output: {e}"
+        finally:
+            # все потоки голоса завершились — голос больше не "играет"
+            with self._lock:
+                voice.remaining -= 1
+                if voice.remaining <= 0:
+                    stop_event.set()
 
     @staticmethod
     def _resolve_device(device):

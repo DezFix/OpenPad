@@ -11,9 +11,9 @@ from PyQt6.QtGui import QAction, QColor, QKeySequence
 from PyQt6.QtWidgets import (
     QApplication, QCheckBox, QComboBox, QDialog, QDialogButtonBox,
     QFileDialog, QHBoxLayout, QInputDialog, QLabel, QLineEdit, QListWidget,
-    QMainWindow, QMessageBox, QPushButton, QSizePolicy, QSlider, QSplitter,
-    QStatusBar, QTableWidget, QTableWidgetItem, QToolBar, QVBoxLayout, QWidget,
-    QKeySequenceEdit,
+    QMainWindow, QMessageBox, QProgressBar, QPushButton, QSizePolicy, QSlider,
+    QSplitter, QStatusBar, QTableWidget, QTableWidgetItem, QToolBar,
+    QVBoxLayout, QWidget, QKeySequenceEdit,
 )
 
 from . import devices as devmod
@@ -34,6 +34,11 @@ def plural_sounds(n: int) -> str:
     if 2 <= d <= 4:
         return "звука"
     return "звуков"
+
+
+def _fmt_time(frames: int, sr: int) -> str:
+    s = max(0, int(frames / float(sr or 44100)))
+    return f"{s // 60}:{s % 60:02d}"
 
 
 def config_path() -> Path:
@@ -136,6 +141,8 @@ class MainWindow(QMainWindow):
         self._cache: dict[str, tuple] = {}
         self._current_cat = "Все"
         self._query = ""
+        self._now_playing: str | None = None
+        self._shown_error: str | None = None
 
         self._build_ui()
         apply_theme(QApplication.instance(), "dark")
@@ -334,6 +341,17 @@ class MainWindow(QMainWindow):
 
         self.status = QStatusBar()
         self.setStatusBar(self.status)
+        # now-playing индикация: видна только пока идёт звук
+        self.np_label = QLabel("")
+        self.np_bar = QProgressBar()
+        self.np_bar.setRange(0, 1000)
+        self.np_bar.setValue(0)
+        self.np_bar.setFixedWidth(140)
+        self.np_bar.setTextVisible(False)
+        self.np_label.setVisible(False)
+        self.np_bar.setVisible(False)
+        self.status.addPermanentWidget(self.np_label)
+        self.status.addPermanentWidget(self.np_bar)
         self._update_status("Готово. Перетащите аудиофайлы в окно.")
 
     def _menu_action(self, menu, text, slot=None, shortcut=None):
@@ -458,6 +476,9 @@ class MainWindow(QMainWindow):
                 if c in (1, 2, 3):
                     item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
                 self.table.setItem(r, c, item)
+        self._update_title()
+
+    def _update_title(self):
         n = len(self.lib.tracks)
         self.setWindowTitle(
             "OpenPad" if n == 0 else f"OpenPad ({n} {plural_sounds(n)})")
@@ -532,9 +553,13 @@ class MainWindow(QMainWindow):
         samples, sr = audio
         res = self.engine.play(track_id, samples, sr, volume=t.volume / 100)
         if res == "started":
+            self._now_playing = track_id
+            self.setWindowTitle(f"▶ {t.name} — OpenPad")
             self._update_status(f"▶ {t.name} → динамики"
                                 + (" + микрофон" if self.engine.mic_device else ""))
         else:
+            self._now_playing = None
+            self._update_title()
             self._update_status(f"⏹ {t.name}")
         self.btn_play.setChecked(self.engine.any_playing())
 
@@ -552,11 +577,15 @@ class MainWindow(QMainWindow):
                 t = self._row_track(rows[0])
                 if t and self.engine.is_playing(t.id):
                     self.engine.stop_all()
+                    self._now_playing = None
+                    self._update_title()
                     self.btn_play.setChecked(False)
                     self._update_status("Стоп")
                     return
             else:
                 self.engine.stop_all()
+                self._now_playing = None
+                self._update_title()
                 self.btn_play.setChecked(False)
                 return
         if rows:
@@ -566,6 +595,8 @@ class MainWindow(QMainWindow):
 
     def stop_all(self):
         self.engine.stop_all()
+        self._now_playing = None
+        self._update_title()
         self.btn_play.setChecked(False)
         self._update_status("Стоп")
 
@@ -587,6 +618,32 @@ class MainWindow(QMainWindow):
         self.engine.cleanup()
         playing = self.engine.any_playing()
         self.btn_play.setChecked(playing)
+        # переход "играло → закончилось само"
+        if self._now_playing and not self.engine.is_playing(self._now_playing):
+            t = self.lib.by_id(self._now_playing)
+            self._now_playing = None
+            self._update_title()
+            if t and not playing:
+                self._update_status(f"■ Готово: {t.name}")
+        # ошибка вывода — показать один раз
+        if (self.engine.last_error
+                and self.engine.last_error != self._shown_error):
+            self._shown_error = self.engine.last_error
+            self._update_status(f"⚠ Ошибка вывода: {self.engine.last_error}")
+        # now-playing панель в статус-баре
+        if (self._now_playing
+                and self.engine.is_playing(self._now_playing)):
+            t = self.lib.by_id(self._now_playing)
+            pos, total, sr = self.engine.get_position(self._now_playing)
+            if t:
+                self.np_label.setText(
+                    f"▶ {t.name}  {_fmt_time(pos, sr)}/{_fmt_time(total, sr)}")
+            self.np_bar.setValue(int(pos * 1000 / total) if total > 0 else 0)
+            self.np_label.setVisible(True)
+            self.np_bar.setVisible(True)
+        else:
+            self.np_label.setVisible(False)
+            self.np_bar.setVisible(False)
         # подсветка
         for r in range(self.table.rowCount()):
             item = self.table.item(r, 0)
@@ -645,6 +702,7 @@ class MainWindow(QMainWindow):
         if not ids:
             return
         self.engine.stop_all()
+        self._now_playing = None
         for tid in ids:
             self._cache.pop(tid, None)
         n = self.lib.remove_ids(ids)
