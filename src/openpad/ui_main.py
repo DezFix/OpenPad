@@ -42,7 +42,31 @@ MIC_HELP = (
     "<b>CABLE Output</b>.<br>"
     "4. Включите <b>«Сквозной микрофон»</b>, чтобы друзья слышали и вас, "
     "и мемы (вход = ваш реальный микрофон).<br><br>"
-    "Без кабеля всё работает из коробки — но только в ваши наушники."
+    "Без кабеля всё работает из коробки — но только в ваши наушники.<br>"
+    "Альтернатива без установки драйвера: <b>режим Stereo Mix</b> — "
+    "см. Помощь → Режим без драйвера (Stereo Mix)."
+)
+
+STEREO_HELP = (
+    "<b>Режим без драйвера: Stereo Mix (запасной вариант)</b><br><br>"
+    "Это встроенная фишка Windows: <i>Stereo Mix</i> подмешивает в запись "
+    "всё, что играет из динамиков. Качество и задержка хуже, чем через "
+    "кабель, свой голос подмешивается через «Прослушать», возможны эхо "
+    "и захват лишних системных звуков. Но <b>ничего ставить не надо</b>.<br><br>"
+    "1. Откройте <b>настройки звука Windows</b> (кнопка в меню Помощь → "
+    "Открыть настройки звука) → вкладка <b>Запись</b>.<br>"
+    "2. ПКМ по пустому месту → <b>Показать отключённые устройства</b> → "
+    "включите <b>Stereo Mix / Стерео микшер</b> (Включить).<br>"
+    "3. В Discord/игре выберите микрофоном <b>Stereo Mix</b>.<br>"
+    "4. В OpenPad играйте как обычно в <b>динамики</b> — звук уйдёт в чат "
+    "вместе со всем системным звуком.<br>"
+    "5. Чтобы друзья слышали и вас: свойства вашего микрофона → "
+    "вкладка <b>Прослушать</b> → галка <b>«Прослушивать с данного "
+    "устройства»</b> → воспроизводить на ваши динамики. Осторожно с "
+    "громкостью — возможен свист/эхо.<br><br>"
+    "Если Stereo Mix нет в списке вообще — значит, его отключил "
+    "производитель аудиодрайвера (часто на ноутбуках). Тогда остаются "
+    "VB-Cable или будущий свой драйвер OpenPad (см. папку driver/)."
 )
 
 
@@ -168,6 +192,10 @@ class MainWindow(QMainWindow):
 
         m_help = mb.addMenu("Помощь")
         m_help.addAction("Как вывести в микрофон…", self.show_mic_help)
+        m_help.addAction("Режим без драйвера (Stereo Mix)…",
+                         self.show_stereo_help)
+        m_help.addAction("Открыть настройки звука Windows",
+                         self.open_sound_settings)
         m_help.addAction("О проекте", self.show_about)
 
         # верхний тулбар
@@ -259,6 +287,11 @@ class MainWindow(QMainWindow):
         self.chk_toggle.setChecked(self.engine.stop_on_repress)
         self.chk_toggle.toggled.connect(self._on_mode_changed)
         lv.addWidget(self.chk_toggle)
+        lv.addWidget(QLabel("Вывод:"))
+        self.lbl_mode = QLabel("…")
+        self.lbl_mode.setWordWrap(True)
+        self.lbl_mode.setStyleSheet("color: #555; font-size: 11px;")
+        lv.addWidget(self.lbl_mode)
         splitter.addWidget(left)
 
         self.table = QTableWidget(0, 4)
@@ -307,23 +340,49 @@ class MainWindow(QMainWindow):
                     if cmb.itemData(i) == val:
                         cmb.setCurrentIndex(i)
                         break
-        # авто-подсказка кабеля
+        # авто-подсказка кабеля + stereo mix
         cables = devmod.find_virtual_cables()
         self._cable_hint = cables[0].name if cables else None
+        stereo = devmod.find_stereo_mix()
+        self._stereo_hint = stereo[0].name if stereo else None
         self.cmb_spk.blockSignals(False)
         self.cmb_mic.blockSignals(False)
         self._on_device_changed()
-        cables_txt = f"Найден кабель: {self._cable_hint}" if self._cable_hint \
-            else "Виртуальный кабель не найден — играем только в динамики"
+        self._update_mode_label()
+        if self._cable_hint:
+            cables_txt = f"Найден кабель: {self._cable_hint}"
+        elif self._stereo_hint:
+            cables_txt = (f"Stereo Mix найден ({self._stereo_hint}) — можно "
+                          f"без драйвера, см. Помощь → Stereo Mix")
+        else:
+            cables_txt = ("Кабель не найден, Stereo Mix не виден — играем "
+                          "только в динамики (см. Помощь)")
         self._update_status(cables_txt)
         if self._cable_hint and self.cmb_mic.currentData() is None and not initial:
             self.status.showMessage(
                 f"Подсказка: выберите Вирт. микрофон = {self._cable_hint} "
                 f"(см. Помощь → Как вывести в микрофон)")
 
+    def _update_mode_label(self):
+        if not hasattr(self, "lbl_mode"):
+            return
+        if self.cmb_mic.currentData():
+            self.lbl_mode.setText(
+                f"🎤 Кабель: {self.cmb_mic.currentData()}")
+        elif getattr(self, "_cable_hint", None):
+            self.lbl_mode.setText(
+                f"💡 Есть кабель: {self._cable_hint} — выбери его сверху")
+        elif getattr(self, "_stereo_hint", None):
+            self.lbl_mode.setText(
+                f"🔊 Stereo Mix: {self._stereo_hint} — режим без драйвера")
+        else:
+            self.lbl_mode.setText(
+                "🔈 Только динамики. Для чата нужен кабель или Stereo Mix")
+
     def _on_device_changed(self):
         self.engine.speaker_device = self.cmb_spk.currentData()
         self.engine.mic_device = self.cmb_mic.currentData()
+        self._update_mode_label()
         self._save_cfg()
 
     def _on_gain_changed(self):
@@ -644,13 +703,30 @@ class MainWindow(QMainWindow):
     def show_mic_help(self):
         QMessageBox.information(self, "Вывод в микрофон", MIC_HELP)
 
+    def show_stereo_help(self):
+        box = QMessageBox(self)
+        box.setWindowTitle("Режим без драйвера")
+        box.setTextFormat(Qt.TextFormat.RichText)
+        box.setText(STEREO_HELP)
+        btn_sound = box.addButton("Открыть настройки звука",
+                                  QMessageBox.ButtonRole.ActionRole)
+        box.addButton("Закрыть", QMessageBox.ButtonRole.RejectRole)
+        box.exec()
+        if box.clickedButton() is btn_sound:
+            self.open_sound_settings()
+
+    def open_sound_settings(self):
+        if not devmod.open_sound_control_panel("recording"):
+            self._update_status("Не смог открыть mmsys.cpl")
+
     def show_about(self):
         QMessageBox.about(
             self, "OpenPad",
             "<b>OpenPad</b> — открытый саундборд.<br>"
             "Рабочее название, v0.1.<br><br>"
-            "Динамики из коробки, микрофон — через VB-Cable "
-            "(свой драйвер у open-source быть не может бесплатно).")
+            "Динамики из коробки; в чат — через VB-Cable, "
+            "запасной вариант — Stereo Mix; "
+            "свой драйвер — в разработке (см. папку driver/).")
 
     def closeEvent(self, e):
         try:

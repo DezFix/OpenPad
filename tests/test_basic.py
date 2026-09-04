@@ -5,6 +5,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 
+from openpad.devices import find_stereo_mix, is_stereo_mix_name
 from openpad.hotkeys import normalize_qt_hotkey
 from openpad.library import Library
 
@@ -20,6 +21,15 @@ class TestLibrary(unittest.TestCase):
         self.assertEqual(
             normalize_qt_hotkey("Ctrl+Shift+A"), "<ctrl>+<shift>+a")
         self.assertIsNone(normalize_qt_hotkey(""))
+
+    def test_stereo_mix_hints(self):
+        self.assertTrue(is_stereo_mix_name("Stereo Mix"))
+        self.assertTrue(is_stereo_mix_name("Стерео микшер"))
+        self.assertTrue(is_stereo_mix_name("What U Hear"))
+        self.assertFalse(is_stereo_mix_name("CABLE Output"))
+        self.assertFalse(is_stereo_mix_name("Microphone"))
+        # без sounddevice просто возвращает список (обычно пустой в CI)
+        self.assertIsInstance(find_stereo_mix(), list)
 
 
 if __name__ == "__main__":

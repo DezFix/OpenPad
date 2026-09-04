@@ -70,3 +70,31 @@ def find_virtual_cables() -> list[DeviceInfo]:
         if any(h in low for h in _VIRTUAL_HINTS):
             found.append(d)
     return found
+
+
+_STEREO_HINTS = (
+    "stereo mix", "стерео", "смешиван", "what u hear",
+    "wave out mix", "stereo-mix", "loopback mix",
+)
+
+
+def is_stereo_mix_name(name: str) -> bool:
+    low = (name or "").lower()
+    return any(h in low for h in _STEREO_HINTS)
+
+
+def find_stereo_mix() -> list[DeviceInfo]:
+    """Входы типа Stereo Mix (если включены в системе)."""
+    return [d for d in list_inputs() if is_stereo_mix_name(d.name)]
+
+
+def open_sound_control_panel(tab: str = "recording") -> bool:
+    """Открыть mmsys.cpl: tab='recording'|'playback'. Только Windows."""
+    import subprocess
+    try:
+        idx = "1" if tab == "recording" else "0"
+        subprocess.Popen(["control", f"mmsys.cpl,,{idx}"],
+                         shell=True)
+        return True
+    except Exception:
+        return False
