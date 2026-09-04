@@ -136,7 +136,7 @@ class MainWindow(QMainWindow):
         self._cache: dict[str, tuple] = {}
         self._current_cat = "Все"
         self._query = ""
-        self._theme = self.cfg.get("theme", "light")
+        self._theme = self.cfg.get("theme", "system")
 
         self._build_ui()
         apply_theme(QApplication.instance(), self._theme)
@@ -176,7 +176,7 @@ class MainWindow(QMainWindow):
                 "allow_overlap": self.chk_overlap.isChecked(),
                 "stop_on_repress": self.chk_toggle.isChecked(),
                 "passthrough": self.chk_pass.isChecked(),
-                "theme": getattr(self, "_theme", "light"),
+                "theme": getattr(self, "_theme", "system"),
             }
             p.write_text(json.dumps(data, ensure_ascii=False, indent=2),
                          encoding="utf-8")
@@ -211,16 +211,19 @@ class MainWindow(QMainWindow):
         m_view = mb.addMenu("Вид")
         theme_group = QActionGroup(self)
         theme_group.setExclusive(True)
+        self.act_theme_system = QAction("Системная тема", self, checkable=True)
         self.act_theme_light = QAction("Светлая тема", self, checkable=True)
         self.act_theme_dark = QAction("Тёмная тема", self, checkable=True)
-        theme_group.addAction(self.act_theme_light)
-        theme_group.addAction(self.act_theme_dark)
-        m_view.addAction(self.act_theme_light)
-        m_view.addAction(self.act_theme_dark)
-        if self._theme == "dark":
-            self.act_theme_dark.setChecked(True)
-        else:
-            self.act_theme_light.setChecked(True)
+        for act in (self.act_theme_system, self.act_theme_light,
+                    self.act_theme_dark):
+            theme_group.addAction(act)
+            m_view.addAction(act)
+        {"system": self.act_theme_system,
+         "light": self.act_theme_light,
+         "dark": self.act_theme_dark}.get(
+            self._theme, self.act_theme_system).setChecked(True)
+        self.act_theme_system.triggered.connect(
+            lambda: self.set_theme("system"))
         self.act_theme_light.triggered.connect(lambda: self.set_theme("light"))
         self.act_theme_dark.triggered.connect(lambda: self.set_theme("dark"))
 
@@ -370,6 +373,7 @@ class MainWindow(QMainWindow):
 
     def set_theme(self, name: str):
         self._theme = apply_theme(QApplication.instance(), name)
+        self.act_theme_system.setChecked(self._theme == "system")
         self.act_theme_light.setChecked(self._theme == "light")
         self.act_theme_dark.setChecked(self._theme == "dark")
         self._highlight_refresh()

@@ -1,8 +1,8 @@
-"""Светлая/тёмная темы OpenPad.
+"""Светлая/тёмная/системная темы OpenPad.
 
-Почему явно: без своего QSS Qt6 подхватывает палитру Windows, и при
-тёмной теме ОС Fusion выглядит тёмным и местами нечитаемым.
-По умолчанию — светлая, переключатель в меню Вид.
+Без своего QSS Qt6 подхватывает палитру Windows (у многих — тёмная).
+Режимы: system (как было из коробки, палитра ОС), light, dark.
+По умолчанию — system.
 """
 
 from __future__ import annotations
@@ -96,9 +96,10 @@ QSlider::sub-page:horizontal { background: #4a90d9; border-radius: 3px; }
 THEMES = {"light": LIGHT_QSS, "dark": DARK_QSS}
 
 
-def apply_theme(app, name: str = "light") -> str:
+def apply_theme(app, name: str = "system") -> str:
     """Применить тему к QApplication. Возвращает фактическое имя."""
-    name = name if name in THEMES else "light"
+    if name not in ("system", "light", "dark"):
+        name = "system"
     app.setStyle("Fusion")
-    app.setStyleSheet(THEMES[name])
+    app.setStyleSheet("" if name == "system" else THEMES[name])
     return name

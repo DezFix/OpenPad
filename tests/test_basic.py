@@ -47,7 +47,9 @@ class TestLibrary(unittest.TestCase):
         app = FakeApp()
         self.assertEqual(t.apply_theme(app, "dark"), "dark")
         self.assertIn("background", app.qss)
-        self.assertEqual(t.apply_theme(app, "nope"), "light")
+        self.assertEqual(t.apply_theme(app, "system"), "system")
+        self.assertEqual(app.qss, "")
+        self.assertEqual(t.apply_theme(app, "nope"), "system")
 
 
 if __name__ == "__main__":
