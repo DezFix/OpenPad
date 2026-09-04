@@ -1,0 +1,51 @@
+# PoC: сборка оригинального SysVAD-драйвера Microsoft в облаке.
+#
+# Зачем: доказать, что мы можем компилировать kernel-драйверы без
+# локальных VS/WDK (их нет на dev-машине). Следующий шаг после зелёного
+# прогона — урезать SysVAD до OpenPadCable (1 playback + 1 capture).
+# Подпись тут НЕ делается: артефакты несертифицированы, ставятся только
+# в test-режиме. См. driver/TODO.md.
+
+name: driver-build
+
+on:
+  push:
+    paths:
+      - "driver/**"
+      - ".github/workflows/driver-build.yml"
+  workflow_dispatch:
+
+jobs:
+  build-sysvad:
+    runs-on: windows-2022
+    timeout-minutes: 120
+    steps:
+      - name: Checkout Microsoft driver samples (+WIL submodule)
+        uses: actions/checkout@v4
+        with:
+          repository: Microsoft/Windows-driver-samples
+          ref: main
+          path: wds
+          submodules: recursive
+
+      - name: Add MSBuild to PATH
+        uses: microsoft/setup-msbuild@v2
+
+      - name: Diagnose toolchain (VS / SDK / WDK)
+        shell: pwsh
+        run: |
+          vswhere -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath
+          if (Test-Path 'C:\Program Files (x86)\Windows Kits\10\Lib') {
+            Get-ChildItem 'C:\Program Files (x86)\Windows Kits\10\Lib' -Directory | Select-Object -ExpandProperty Name
+          } else { Write-Host 'NO_WINDOWS_KITS_LIB' }
+
+      - name: Build SysVAD solution (x64 Release)
+        shell: pwsh
+        run: msbuild wds\audio\sysvad\sysvad.sln -p:Configuration=Release -p:Platform=x64 -m -v:m
+
+      - name: Upload built driver package
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: sysvad-x64-release
+          path: wds/audio/sysvad/**/x64/Release/
