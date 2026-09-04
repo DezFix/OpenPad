@@ -868,13 +868,14 @@ class MainWindow(QMainWindow):
             "После перезагрузки OpenPad сам выберет CABLE Input.")
 
     def show_about(self):
+        from . import __version__
         QMessageBox.about(
             self, "OpenPad",
-            "<b>OpenPad</b> — открытый саундборд.<br>"
-            "Рабочее название, v0.1.<br><br>"
+            f"<b>OpenPad</b> — открытый саундборд.<br>"
+            f"Рабочее название, v{__version__}.<br><br>"
             "Динамики из коробки; в чат — через VB-Cable, "
             "запасной вариант — Stereo Mix; "
-            "свой драйвер — в разработке (см. папку driver/).")
+            "свой драйвер — на паузе (см. папку driver/).")
 
     def closeEvent(self, e):
         try:
