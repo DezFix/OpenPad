@@ -2,9 +2,16 @@
 
 > Рабочее название. Open-source альтернатива Soundpad с нуля.
 
-![status](https://img.shields.io/badge/status-v0.1-blue)
+![status](https://img.shields.io/badge/status-v0.2-blue)
 ![platform](https://img.shields.io/badge/platform-Windows-lightgrey)
 ![license](https://img.shields.io/badge/license-MIT-green)
+
+## Скачать
+
+**[⬇ OpenPad.exe (v0.2.0, ~50 МБ)](https://github.com/DezFix/OpenPad/releases/latest)**
+— скачай, запусти, ничего ставить не надо (Python не нужен).
+Для вывода в Discord дополнительно понадобится VB-Cable —
+ставится из приложения в 1 клик (Помощь → Установить VB-Cable).
 
 ## Что это
 
